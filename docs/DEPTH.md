@@ -14,6 +14,7 @@
 | M5 设计与实测对账 | 核对逐接头是否缺证 | POST /api/design | `app/modules/design/service.py` | `tests/test_design.py` |
 | M6 批次留档复跑 | 留档和重跑同一轨迹组 | POST /api/inspections | `app/modules/archive/storage.py` | `tests/test_archive.py` |
 | M7 光纤证据签发 | 复核签发条件并下载 | GET /api/certificate/<id> | `app/modules/certificate/service.py` | `tests/test_certificate.py` |
+| M8 双波长排障工单 | 按两波长判断派发建议、领取与修订 | POST /api/workorders | `app/modules/workorder/service.py` | `tests/test_workorder.py` |
 
 ## 陷阱登记
 
@@ -28,6 +29,10 @@
 | TRAP-15 | A-02 米和千米并存 | 两条虚假轨迹 | 归一毫米后比对 | `app/modules/trace/units.py` | `tests/test_trace.py::test_equivalent_units_dedupe` |
 | TRAP-19 | A100 可匹配 B97 或 B101 | 最近优先导致 A105 无法配对 | 先最大配对数再最小间差 | `app/modules/pairs/optimal.py` | `tests/test_pairs.py::test_global_pairing_beats_greedy_and_keeps_competition` |
 | TRAP-21 | A700 和 B820 均无对侧 | 只报一端孤测 | 分别记录缺 A 或缺 B | `app/modules/pairs/service.py` | `tests/test_pairs.py::test_opposite_ends_missing_in_both_directions` |
+| TRAP-22 | 单波长超限、另一波长缺测 | 直接按超限派重熔 | 缺测波长不作判据，派补测工单并禁止重熔 | `app/modules/workorder/model.py` | `tests/test_workorder.py::test_wavelength_missing_one_end_is_unmeasured_not_over` |
+| TRAP-23 | 仅长波超限 | 与短波超限同样重熔 | 弯折特征优先，派弯折排查且禁止重熔 | `app/modules/workorder/model.py` | `tests/test_workorder.py::test_two_over_limit_wavelengths_refuse_joint_and_long_only_checks_bend` |
+| TRAP-24 | 重跑或补录重试 | 同一接头重复开工单 | 按批次+接头定工单号，内容定补录号，幂等 | `app/modules/workorder/service.py` | `tests/test_workorder.py::test_rerun_does_not_dispatch_twice` `::test_retried_measurement_is_idempotent` |
+| TRAP-25 | 晚到测量改变判断 | 覆盖已领工单的依据 | 追加修订版本，领取时依据单独留存 | `app/modules/workorder/storage.py` | `tests/test_workorder.py::test_claim_keeps_original_basis_after_late_measurement` |
 
 ## 对账规则
 

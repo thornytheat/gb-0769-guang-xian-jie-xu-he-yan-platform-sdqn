@@ -1,0 +1,83 @@
+<section class="panel dispatch">
+  <div class="title-line"><h3>$ 双波长派工判断</h3>
+    <span>{% if evaluation %}短波 {{ evaluation.labels.short }} · 长波 {{ evaluation.labels.long }}{% else %}两波长各带双端读数{% endif %}</span></div>
+  <form class="command" method="post" action="/inspect/workorder">
+    <span class="prompt" aria-hidden="true">$</span>
+    <label for="work-order-batch">批次</label><input id="work-order-batch" name="batch" value="{{ batch }}" size="10">
+    <select name="sample" id="work-order-sample">
+      <option value="dual" {{ 'selected' if mode != 'custom' }}>双波长排障链路</option>
+      <option value="custom" {{ 'selected' if mode == 'custom' }}>自填双波长轨迹</option>
+    </select>
+    <button id="fiber-run">派发 / 重算工单</button>
+    <output id="request-state" aria-live="polite"></output>
+    <details id="fiber-source" {% if mode == 'custom' %}open{% endif %}><summary>双波长轨迹与校准参数</summary>
+      <div class="edit">
+      {% for key in fields %}<label>{{ {'length_m':'全长 m','zero_a_m':'A 起偏 m','zero_b_m':'B 起偏 m','pair_tol_m':'配对容差 m','design_tol_m':'设计容差 m','reference_limit_db':'参考损耗 dB'}[key] }}<input name="{{ key }}" value="{{ materials.settings.get(key,'') if materials.settings else '' }}"></label>{% endfor %}
+      {% for wave in waves %}{% for source in ['a','b','design'] %}<label class="source-file">{{ wave }}_{{ source }}.csv<textarea name="{{ wave }}_{{ source }}" rows="4" spellcheck="false">{{ materials.traces.get(wave,{}).get(source,'') }}</textarea></label>{% endfor %}{% endfor %}
+      </div>
+    </details>
+  </form>
+</section>
+
+{% if error %}<article class="panel issue" role="alert">{{ error }}。检查双波长轨迹原件。</article>{% endif %}
+{% if issued %}<p role="status">本次派发：新建 {{ issued.created }} 张，修订 {{ issued.revised }} 张。</p>{% endif %}
+
+{% if evaluation %}
+<section class="panel stats">
+  <dl class="kpis">
+    <div><dt>设计接头</dt><dd>{{ evaluation.joints|length }}</dd></div>
+    <div><dt>重熔派发</dt><dd>{{ evaluation.counts.REFUSE_JOINT }}</dd></div>
+    <div><dt>弯折排查</dt><dd>{{ evaluation.counts.CHECK_BEND }}</dd></div>
+    <div><dt>补测波长</dt><dd>{{ evaluation.counts.COMPLETE_MEASUREMENT }}</dd></div>
+    <div><dt>不需派发</dt><dd>{{ evaluation.counts.NONE + evaluation.counts.WITHDRAW }}</dd></div>
+  </dl>
+</section>
+
+<section class="panel orders" id="evidence-grid">
+  <div class="title-line"><h3>$ 工单处置建议</h3>
+    <div class="keys"><button type="button" id="event-prev"><kbd>K</kbd> 上一条</button><button type="button" id="event-next"><kbd>J</kbd> 下一条</button></div></div>
+  <div class="sheet"><table><thead><tr><th>接头 / 链程</th><th>短波判定</th><th>长波判定</th><th>处置建议</th><th>工单</th></tr></thead><tbody>
+  {% for joint in evaluation.joints %}
+  <tr tabindex="0" data-event="{{ joint.joint }}">
+    <td>{{ joint.joint }}{% if joint.position_mm is not none %} · {{ joint.position_mm|metres }} m{% endif %}</td>
+    {% for key in ['short','long'] %}{% set row = joint.waves[key] %}
+    <td class="result" data-state="{{ row.state }}">{{ codes[row.state] }}{% if row.net_db %} · {{ row.net_db }} dB{% endif %}{% if row.code in ['INVALID_NET_GAIN','SINGLE_SIDE_ONLY','NO_COUPLED_EVIDENCE','DESIGN_OUTSIDE_LINK','NO_DESIGN_POINT'] %} · {{ codes[row.code] }}{% endif %}</td>
+    {% endfor %}
+    <td class="result" data-state="{{ joint.recommendation }}">{{ codes[joint.recommendation] }}<br><span class="why"><strong>{{ joint.title }}</strong>：{{ joint.rationale }} {{ joint.instruction }}</span></td>
+    <td>{% if stored.get(joint.order_id) %}<a href="/api/workorders/{{ joint.order_id }}">{{ stored[joint.order_id].revision }} 版 · {{ stored[joint.order_id].claimed_by or '未领取' }}</a>{% else %}未派发{% endif %}</td>
+  </tr>
+  {% else %}<tr><td colspan="5">补齐两波长双端轨迹后判断。</td></tr>{% endfor %}
+  </tbody></table></div>
+  <output id="focus-event" aria-live="polite"></output>
+</section>
+{% endif %}
+
+<section class="panel orders">
+  <div class="title-line"><h3>$ 已派发工单与修订</h3><span>已领工单保留领取时依据，判断变化另行追加修订</span></div>
+  <div class="sheet"><table><thead><tr><th>工单</th><th>接头</th><th>当前建议</th><th>版本</th><th>领取</th><th>领取时建议</th><th>判断已变</th></tr></thead><tbody>
+  {% for item in orders %}{% set current = item.current.document %}
+  <tr><td><a href="/api/workorders/{{ item.summary.order_id }}">{{ item.summary.order_id[:12] }}</a></td><td>{{ item.summary.joint }}</td>
+    <td class="result" data-state="{{ current.recommendation }}">{{ codes[current.recommendation] }}</td><td>{{ item.current.revision }}</td>
+    <td>{{ item.summary.claimed_by or '未领取' }}{% if item.summary.claimed_by %} · {{ item.summary.claimed_at }}{% endif %}</td>
+    <td>{% if item.claim %}<span class="result" data-state="{{ item.claim.document.recommendation }}">{{ codes[item.claim.document.recommendation] }}</span> <span class="why">({{ item.claim.revision }} 版)</span>{% else %}—{% endif %}</td>
+    <td>{% if item.summary.changed_since_claim %}是 · 见新建议{% else %}否{% endif %}</td></tr>
+  {% else %}<tr><td colspan="7">该批次尚未派发工单。</td></tr>{% endfor %}
+  </tbody></table></div>
+  <form class="command" method="post" action="/inspect/workorder">
+    <input type="hidden" name="batch" value="{{ batch }}"><input type="hidden" name="sample" value="{{ mode }}">
+    <label for="claim-order">领取工单</label><input id="claim-order" name="order" value="{{ focus_order or '' }}" size="14" placeholder="工单号">
+    <label for="claim-crew">工班</label><input id="claim-crew" name="crew" value="" size="10" placeholder="crew-1">
+    <button name="action" value="claim">领取</button>
+    <output aria-live="polite">{{ claim_result or '' }}</output>
+  </form>
+  <form class="command" method="post" action="/inspect/workorder">
+    <input type="hidden" name="batch" value="{{ batch }}"><input type="hidden" name="sample" value="{{ mode }}">
+    <label for="measure-wave">补录波长</label>
+    <select id="measure-wave" name="wave">{% for wave in waves %}<option value="{{ wave }}">{{ wave }}</option>{% endfor %}</select>
+    <label for="measure-source">端</label>
+    <select id="measure-source" name="source">{% for source in ['a','b'] %}<option value="{{ source }}">{{ source|upper }}</option>{% endfor %}</select>
+    <label for="measure-rows">事件行</label><input id="measure-rows" name="rows" value="" size="34" placeholder="事件,距离,单位,损耗">
+    <button name="action" value="measure">补录并重算</button>
+    <output aria-live="polite">{{ measure_result or '' }}</output>
+  </form>
+</section>

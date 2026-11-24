@@ -1,0 +1,5 @@
+joint,distance,unit,limit_db
+F-01,100,m,0.2
+F-02,300,m,0.2
+F-03,500,m,0.2
+F-04,700,m,0.2

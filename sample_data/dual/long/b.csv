@@ -1,0 +1,4 @@
+event,distance,unit,loss_db
+L-B1,940,m,0.65
+L-B2,740,m,0.50
+L-B3,340,m,0.19
